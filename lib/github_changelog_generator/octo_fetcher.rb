@@ -38,6 +38,7 @@ module GitHubChangelogGenerator
       prepare_cache
       configure_octokit_ssl
       @client = Octokit::Client.new(github_options)
+      @clients = (0...MAX_THREAD_NUMBER).map { Octokit::Client.new(github_options) }
     end
 
     def prepare_cache
@@ -191,10 +192,10 @@ Make sure, that you push tags to remote repo via 'git push --tags'"
       preview = { accept: Octokit::Preview::PREVIEW_TYPES[:project_card_events] }
 
       issues.each_slice(MAX_THREAD_NUMBER) do |issues_slice|
-        issues_slice.each do |issue|
-          threads << Thread.new do
+        issues_slice.each_with_index do |issue, j|
+          threads << Thread.new(@clients[j]) do |client|
             issue["events"] = []
-            iterate_pages(@client, "issue_events", issue["number"], preview) do |new_event|
+            iterate_pages(client, "issue_events", issue["number"], preview) do |new_event|
               issue["events"].concat(new_event)
             end
             issue["events"] = issue["events"].map { |event| stringify_keys_deep(event.to_hash) }
